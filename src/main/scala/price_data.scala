@@ -11,9 +11,8 @@ import java.io._
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import redis.clients.jedis.JedisPool
 import scala.util.Try
-
-
-
+import scala.collection.JavaConverters._
+import java.util.ArrayList
 
 object PriceDataStreaming {
  
@@ -60,19 +59,94 @@ object PriceDataStreaming {
 
 }
 
+    object RedisClient1 extends Serializable {
+  
+
+    val redisHost = conf.getString("redis.hostName")
+    val redisPort = conf.getString("redis.port")
+    val redisTimeout = 30000
+
+    lazy val pool = new JedisPool(new GenericObjectPoolConfig(), redisHost, 6379, redisTimeout)
+    lazy val hook = new Thread {
+      override def run = {
+
+      println("Execute hook thread: " + this)
+
+      pool.destroy()
+
+    }
+
+  }
+
+  sys.addShutdownHook(hook.run)
+
+}
+
+//Get promotion data
+
+
+    val jed = RedisClient1.pool.getResource
+    jed.auth(conf.getString("redis.pass"))
+    jed.select(1)
+
+
+     val keys = jed.keys("*")
+     val key1 = keys.asScala
+     val rows = collection.mutable.MutableList[(Data)]()
+    
+
+ 
+     for(key<-key1)
+	{
+		val row = Data(key, jed.get(key))
+		rows+=(row)
+	} 
+     
+	
+		
+     val sqlContext = SQLContext.getOrCreate(SparkContext.getOrCreate())
+     import sqlContext.implicits._
+			
+     val ds = sqlContext.createDataset(rows)
+     //val ds = sqlContext.createDataset(new ArrayList(keys))
+     ds.show()
 
 
 // Get the lines and show results
     messages.foreachRDD ( rdd=> { 
     val csvmessage = rdd.map(_._2)
-        // csvmessage.collect().foreach(println)
-	csvmessage.foreachPartition( partitionIter=> {
-		   
-		  
+   	val transDF = csvmessage.map(x => {
+                                  val tokens = x.split(";")
+                                  Transaction(tokens(0), tokens(1), tokens(2), tokens(3),tokens(4),tokens(5), tokens(6))}).toDF() 
+        transDF.show()
+
+	val result = ds.join(transDF, ds.col("product") === transDF.col("product"))
+	result.show()
+        
+	result.foreachPartition( partitionIter=> {
+		   	    
                     val jedis = RedisClient.pool.getResource
                     jedis.auth(conf.getString("redis.pass"))
+                    jedis.select(2)
 		   
-      		   partitionIter.foreach( record=> {
+		   
+      		    partitionIter.foreach( record=> {
+		    
+                    jedis.publish("tored",record.getString(1)+record.getString(2))
+		}
+					
+	)
+	})   
+
+        
+	csvmessage.foreachPartition( partitionIter=> {
+		   	    
+                    val jedis = RedisClient.pool.getResource
+                    jedis.auth(conf.getString("redis.pass"))
+                    jedis.select(0)
+		   
+		   
+      		    partitionIter.foreach( record=> {
 		    
                     val tokens = record.split(";")
                     jedis.publish("toredis",tokens(1)+tokens(2)+tokens(3)+tokens(4)+tokens(5))
@@ -83,50 +157,17 @@ object PriceDataStreaming {
    })
 })
 
-//rdd.foreachPartition(partitionIter => {
         
-  //     partitionIter.foreach(rows=>{ 
-	
-	//val sqlContext = SQLContextSingleton.getInstance(rdd.sparkContext)
 
-        //import sqlContext.implicits._
-        //rows.toDF().show()
-
-    //     println("====================================================================================================================================="+rows)
-        //val lines = rows
-        
-  /*     /* val ticksDF = lines.map(x => {
-                                    
-                                 val tokens = x.split(";")
-                                    val jedis = RedisClient.pool.getResource
-                                    jedis.auth(conf.getString("redis.pass"))
-                                    jedis.set(tokens(2),tokens(3)+tokens(4)+tokens(5))
-                                    Tick(tokens(0), 1.2, 2)}).toDF()
-
-        val ticks_per_source_DF = ticksDF.groupBy("source")
-                                .agg("price" -> "avg", "volume" -> "sum")
-                                .orderBy("source")
-        //RedisConnection.client.set("currtime-"+, )
-        ticksDF.show()
-        ticks_per_source_DF.show()
-*/   */
-// Start the computation
-   // })
-//})
-//}
-//rdd.collect()
-//rdd.toDF().show()
-//}
-
-//messages.print()
     ssc.start()
     ssc.awaitTermination()
   }
 }
 
 
+case class Data(product: String, promotion: String) 
 
-case class Tick(source: String, price: Double, volume: Int)
+case class Transaction(source: String, time: String, price: String, volume: String, cust: String,  product: String, category: String)
 
 /** Lazily instantiated singleton instance of SQLContext */
 object SQLContextSingleton {
