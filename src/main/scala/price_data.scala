@@ -13,6 +13,7 @@ import redis.clients.jedis.JedisPool
 import scala.util.Try
 import scala.collection.JavaConverters._
 import java.util.ArrayList
+import org.apache.spark.sql.functions._
 
 object PriceDataStreaming {
  
@@ -92,13 +93,17 @@ object PriceDataStreaming {
 
      val keys = jed.keys("*")
      val key1 = keys.asScala
-     val rows = collection.mutable.MutableList[(Data)]()
+     val rows = collection.mutable.MutableList[(Promotion)]()
     
 
  
      for(key<-key1)
 	{
-		val row = Data(key, jed.get(key))
+		
+                val element = jed.get(key)
+                val tokens = element.split(";")
+		val row = Promotion(key.toInt, tokens(0), tokens(1), tokens(2), tokens(3).toInt, tokens(4).toInt)
+
 		rows+=(row)
 	} 
      
@@ -120,7 +125,7 @@ object PriceDataStreaming {
                                   Transaction(tokens(0), tokens(1), tokens(2), tokens(3),tokens(4),tokens(5), tokens(6))}).toDF() 
         transDF.show()
 
-	val result = ds.join(transDF, ds.col("product") === transDF.col("product"))
+	val result = ds.join(transDF, ds.col("product") === transDF.col("product")).groupBy(ds.col("campaign")).agg(sum(ds.col("coupon_count")), sum(ds.col("campaign_target")))
 	result.show()
         
 	result.foreachPartition( partitionIter=> {
@@ -132,7 +137,7 @@ object PriceDataStreaming {
 		   
       		    partitionIter.foreach( record=> {
 		    
-                    jedis.publish("tored",record.getString(1)+record.getString(2))
+                    jedis.publish("tored",record.getString(0))
 		}
 					
 	)
@@ -165,7 +170,7 @@ object PriceDataStreaming {
 }
 
 
-case class Data(product: String, promotion: String) 
+case class Promotion(promotion_id: Int, product: String, promotion: String, campaign: String, coupon_count: Int, campaign_target: Int) 
 
 case class Transaction(source: String, time: String, price: String, volume: String, cust: String,  product: String, category: String)
 
