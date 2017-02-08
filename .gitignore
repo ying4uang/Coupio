@@ -2,3 +2,5 @@ src/main/resources/*.conf
 target/*
 project/project/*
 project/target/*
+src/main/scala/*bk*
+src/main/scala/*.sw*
