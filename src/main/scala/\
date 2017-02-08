@@ -46,9 +46,20 @@ object PriceDataStreaming {
     val redisTimeout = 300
 
     val pool = new JedisPool(new GenericObjectPoolConfig(), redisHost, 6379, redisTimeout, redisAuth )
+   /* val hook = new Thread {
+      override def run = {
+
+      println("Execute hook thread: " + this)
+
+      pool.destroy()
+
+    }
 
   }
 
+  sys.addShutdownHook(hook.run)
+*/
+}
 
  /*  object RedisClient1 extends Serializable {
   
@@ -74,7 +85,6 @@ object PriceDataStreaming {
 
 }
 */
-
 //Get promotion data
 
 
@@ -92,8 +102,10 @@ object PriceDataStreaming {
  
      for(key<-key1)
 	{
-                val element = jed.hgetAll(key)
-		val row = Promotion(key.toInt, element.get("product"), element.get("promotion"), element.get("campaign"), element.get("coupon_count").toInt, element.get("campaign_target").toInt)
+		
+                val element = jed.get(key)
+                val tokens = element.split(";")
+		val row = Promotion(key.toInt, tokens(0), tokens(1), tokens(2), tokens(3).toInt, tokens(4).toInt)
 
 		rows+=(row)
 	} 
@@ -104,10 +116,11 @@ object PriceDataStreaming {
      import sqlContext.implicits._
 			
      val ds = sqlContext.createDataset(rows)
+     //val ds = sqlContext.createDataset(new ArrayList(keys))
+    // ds.show()
+   //  RedisClient1.pool.returnResource(jed)
       jed.close()
-
-
-// Join campaign data with  the lines and show results
+// Get the lines and show results
    messages.foreachRDD ( rdd=> { 
     val csvmessage = rdd.map(_._2)
    	val transDF = csvmessage.map(x => {
@@ -115,28 +128,43 @@ object PriceDataStreaming {
                                   Transaction(tokens(0), tokens(1), tokens(2), tokens(3),tokens(4),tokens(5), tokens(6))}).toDF() 
         transDF.show()
  
-	val result = ds.join(transDF, ds.col("product") === transDF.col("product")).groupBy(ds.col("campaign_id"),ds.col("campaign")).agg(count("*"), sum(ds.col("campaign_target")))
+	val result = ds.join(transDF, ds.col("product") === transDF.col("product")).groupBy(ds.col("campaign")).agg(sum(ds.col("coupon_count")), sum(ds.col("campaign_target")))
 	result.show()
-	
+       print("================================="+result.partitions.size) 
 	result.foreachPartition( partitionIter=> {
 		   	    
-		       
-    		val jedis = new Jedis(conf.getString("redis.hostName"),6379)
-    		jedis.auth(conf.getString("redis.pass"))
-    		jedis.select(1)
+                    val jedis = RedisClient.pool.getResource
+                    //jedis.auth(conf.getString("redis.pass"))
+                    jedis.select(2)
 		   
-      		partitionIter.foreach( record=> {
-		//update coupon count    
-                jedis.hincrBy(record.getInt(0).toString,"coupon_count", record.getLong(2))
-		
+		   
+      		    partitionIter.foreach( record=> {
+		    
+                    jedis.publish("tored",record.getString(0)+record.getLong(1)+record.getLong(2))
 		}
 					
 	)
-
-	jedis.close()
+         RedisClient.pool.returnResource(jedis)
 
 	})   
 
+      /*  
+	csvmessage.foreachPartition( partitionIter=> {
+		   	    
+                    val jedis = RedisClient.pool.getResource
+                    jedis.auth(conf.getString("redis.pass"))
+                    jedis.select(0)
+		   
+		   
+      		    partitionIter.foreach( record=> {
+		    
+                    val tokens = record.split(";")
+                    jedis.publish("toredis",tokens(1)+tokens(2)+tokens(3)+tokens(4)+tokens(5))
+		    println(record)
+		}
+					
+	)   
+   })*/
 })
 
         
@@ -147,7 +175,7 @@ object PriceDataStreaming {
 }
 
 
-case class Promotion(campaign_id: Int, product: String, promotion: String, campaign: String, coupon_count: Int, campaign_target: Int) 
+case class Promotion(promotion_id: Int, product: String, promotion: String, campaign: String, coupon_count: Int, campaign_target: Int) 
 
 case class Transaction(source: String, time: String, price: String, volume: String, cust: String,  product: String, category: String)
 
