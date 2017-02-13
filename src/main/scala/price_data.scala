@@ -27,7 +27,8 @@ object PriceDataStreaming {
     val topicsSet = topics.split(",").toSet
 	
 
-    // Create context with 2 second batch interval    
+    // Create context with 2 second batch interval
+    
     val sparkConf = new SparkConf().setAppName("store_data")
     val ssc = new StreamingContext(sparkConf, Seconds(2))
 
@@ -49,29 +50,31 @@ object PriceDataStreaming {
     val rows = collection.mutable.MutableList[(Promotion)]()
     
  
-     for(key<-key1){
+    for(key<-key1){
                 val element = jed.hgetAll(key)
 		val row = Promotion(key.toInt, element.get("product"), element.get("promotion"), element.get("campaign"), element.get("coupon_count").toInt, element.get("campaign_target").toInt)
 		rows+=(row)
     } 
      
-     val sqlContext = SQLContext.getOrCreate(SparkContext.getOrCreate())
-     import sqlContext.implicits._			
+    val sqlContext = SQLContext.getOrCreate(SparkContext.getOrCreate())
+    import sqlContext.implicits._			
 
-     val ds = sqlContext.createDataset(rows)
-     jed.close()
+    val ds = sqlContext.createDataset(rows)
+    jed.close()
 
  
-     val csvmessage = rdd.map(_._2)
-     val transDF = csvmessage.map(x => {
-                                  val tokens = x.split(";")
-                                  Transaction(tokens(0), tokens(1), tokens(2), tokens(3),tokens(4),tokens(5), tokens(6))}).toDF() 
-        transDF.show()
+    val csvmessage = rdd.map(_._2)
+    val transDF = csvmessage.map(x => {
+
+    val tokens = x.split(";")
+    
+    Transaction(tokens(0), tokens(1), tokens(2), tokens(3),tokens(4),tokens(5), tokens(6))}).toDF() 
+    transDF.show()
  
-	val result = ds.join(transDF, ds.col("product") === transDF.col("product")).groupBy(ds.col("campaign_id"),ds.col("campaign")).agg(count("*"), sum(ds.col("campaign_target")))
-	result.show()
+    val result = ds.join(transDF, ds.col("product") === transDF.col("product")).groupBy(ds.col("campaign_id"),ds.col("campaign")).agg(count("*"), sum(ds.col("campaign_target")))
+    result.show()
 	
-	result.foreachPartition( partitionIter=> {
+    result.foreachPartition( partitionIter=> {
 		   	    
 		       
     		val jedis = new Jedis(conf.getString("redis.hostName"),6379)
