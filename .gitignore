@@ -4,3 +4,5 @@ project/project/*
 project/target/*
 src/main/scala/*bk*
 src/main/scala/*.sw*
+src/main/scala/*scredis*
+src/main/scala/scala

@@ -27,8 +27,7 @@ object PriceDataStreaming {
     val topicsSet = topics.split(",").toSet
 	
 
-    // Create context with 2 second batch interval
-    
+    // Create context with 2 second batch interval    
     val sparkConf = new SparkConf().setAppName("store_data")
     val ssc = new StreamingContext(sparkConf, Seconds(2))
 
@@ -37,80 +36,34 @@ object PriceDataStreaming {
     val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](ssc, kafkaParams, topicsSet)
 
 
-    object RedisClient extends Serializable {
-  
-
-    val redisHost = conf.getString("redis.hostName")
-    val redisPort = conf.getString("redis.port")
-    val redisAuth = conf.getString("redis.pass")    
-    val redisTimeout = 300
-
-    val pool = new JedisPool(new GenericObjectPoolConfig(), redisHost, 6379, redisTimeout, redisAuth )
-
-  }
-
-
- /*  object RedisClient1 extends Serializable {
-  
-
-    val redisHost = conf.getString("redis.hostName")
-    val redisPort = conf.getString("redis.port")
-    val redisTimeout = 30000
-
-    lazy val pool = new JedisPool(new GenericObjectPoolConfig(), redisHost, 6379, redisTimeout)
-    lazy val hook = new Thread {
-    
-     override def run = {
-
-      println("Execute hook thread: " + this)
-
-      pool.destroy()
-
-    }
-
-  }
-
-  sys.addShutdownHook(hook.run)
-
-}
-*/
-
-//Get promotion data
-
-
+    //Join campaign data with  the lines and show results
+    messages.foreachRDD ( rdd=> {
+   
+   
     val jed = new Jedis(conf.getString("redis.hostName"),6379)
-    //RedisClient1.pool.getResource
     jed.auth(conf.getString("redis.pass"))
     jed.select(1)
 
-
-     val keys = jed.keys("*")
-     val key1 = keys.asScala
-     val rows = collection.mutable.MutableList[(Promotion)]()
+    val keys = jed.keys("*")
+    val key1 = keys.asScala
+    val rows = collection.mutable.MutableList[(Promotion)]()
     
-
  
-     for(key<-key1)
-	{
+     for(key<-key1){
                 val element = jed.hgetAll(key)
 		val row = Promotion(key.toInt, element.get("product"), element.get("promotion"), element.get("campaign"), element.get("coupon_count").toInt, element.get("campaign_target").toInt)
-
 		rows+=(row)
-	} 
+    } 
      
-	
-		
      val sqlContext = SQLContext.getOrCreate(SparkContext.getOrCreate())
-     import sqlContext.implicits._
-			
+     import sqlContext.implicits._			
+
      val ds = sqlContext.createDataset(rows)
-      jed.close()
+     jed.close()
 
-
-// Join campaign data with  the lines and show results
-   messages.foreachRDD ( rdd=> { 
-    val csvmessage = rdd.map(_._2)
-   	val transDF = csvmessage.map(x => {
+ 
+     val csvmessage = rdd.map(_._2)
+     val transDF = csvmessage.map(x => {
                                   val tokens = x.split(";")
                                   Transaction(tokens(0), tokens(1), tokens(2), tokens(3),tokens(4),tokens(5), tokens(6))}).toDF() 
         transDF.show()
@@ -129,9 +82,7 @@ object PriceDataStreaming {
 		//update coupon count    
                 jedis.hincrBy(record.getInt(0).toString,"coupon_count", record.getLong(2))
 		
-		}
-					
-	)
+		})
 
 	jedis.close()
 
