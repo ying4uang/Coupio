@@ -6,9 +6,9 @@
 Coupio allows you to create campaigns on the fly and see realtime results. In terms of system architecture, there are three main components of Coupio.
 
 
-* Streaming Layer - Aggregate results on the fly
+* Streaming Layer - Aggregate results on the fly - [go to repository](https://github.com/ying4uang/Coupon_Dist/blob/master/src/main/scala/price_data.scala)
 * Batch Layer - for business analytics
-* Data Generation
+* Data Generation - [go to repository](https://github.com/ying4uang/Coupon_Dist/tree/master/data_gen)
 * Web Layer - [go to repository](https://github.com/ying4uang/Coupio_Web)
 
 ##Full System Architecture
