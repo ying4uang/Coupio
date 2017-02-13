@@ -21,7 +21,7 @@ Coupio allows you to create campaigns on the fly and see realtime results. In te
 
 
 ### Streaming Layer
-Transaction data is streamed from Kafka to Spark Streaming, joining with lookup data(which contains campaign information and products to pair with a coupon). The joined data is then aggregated and written to redis and displayed on front end flask pages.
+Transaction data is streamed from Kafka to Spark Streaming, joining with lookup data(which contains campaign information and products to pair with a coupon). The joined data is then aggregated and written to redis and displayed on front end flask pages.[see repository](https://github.com/ying4uang/Coupon_Dist/blob/master/src/main/scala/price_data.scala)
 
 ### Batch Layer
 Transaction data is also pushed to S3 for fault tolerance and further analysis in the data warehouse. I used Secor to push data from Kafaka to S3 and Luigi to schedule to load from S3 into Redshift. The luigi code can be found [here](https://github.com/ying4uang/Coupon_Dist/tree/master/luigi). For secor, since it is mainly configuration files and I have ignored it here for security considerations.
